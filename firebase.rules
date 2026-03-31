@@ -1,0 +1,54 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Allow all read/write access for development/testing
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
+    
+    // Payment Methods Rules
+    match /paymentMethods/{paymentMethodId} {
+      // Allow authenticated users to manage payment methods
+      allow read, write: if isSignedIn() || isAdmin();
+      
+      // Ensure payment method belongs to a customer
+      allow create: if isSignedIn()
+        && request.resource.data.keys().hasAll(['customerId', 'type'])
+        && request.resource.data.customerId is string
+        && request.resource.data.type in ['credit_card', 'debit_card', 'upi'];
+    }
+    
+    // Payment Transactions Rules
+    match /paymentTransactions/{transactionId} {
+      // Allow authenticated users to read payment transactions
+      allow read: if isSignedIn() || isAdmin();
+      
+      // Only allow creation of payment transactions, no updates/deletes
+      allow create: if isSignedIn()
+        && request.resource.data.keys().hasAll(['customerId', 'amount', 'status'])
+        && request.resource.data.customerId is string
+        && request.resource.data.amount is number
+        && request.resource.data.status in ['pending', 'completed', 'failed', 'refunded'];
+    }
+  }
+}
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isAdmin() {
+      return isSignedIn() && 'admin' in request.auth.token && request.auth.token.admin == true;
+    }
+
+    // Driver license images: only owner can upload/read their folder
+    match /driver_licenses/{userId}/{allPaths=**} {
+      allow read, write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+    }
+  }
+}
+
+
